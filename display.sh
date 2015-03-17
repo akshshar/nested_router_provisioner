@@ -1,3 +1,16 @@
+function is_port_free {
+
+check=`lsof -i:$1`
+result=$?
+if [[ $result == 1 ]]
+then
+    printf "Port $1 is free...returning"
+    return 1
+else
+    printf "Port $1 is not free...returning"
+    return 0
+fi
+}
 boot_port=`ps -ef | grep $1 | grep $2 | grep kvm | awk '{print $53}'`
 host_port=`ps -ef | grep $1 | grep $2 | grep kvm | awk '{print $59}'`
 
@@ -26,19 +39,40 @@ split_host_final=(${split_var_port//,/ })
 #printf "Now run \n\n"
 #printf "python /home/cisco/sunstone/try_nested_ssh.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2\n\n\n"
 
-printf "Setting up net devices on the host as XR LXC boots up. Please wait........\n\n\n"
-su cisco -c  "python /home/cisco/sunstone/setup_netstack.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2"
+printf "\n\n\n Starting the provisioner script....\n\nSetting up net devices on the host as XR LXC boots up. Please wait........\n\n\n"
+
+port=7000
+while true
+do
+   is_port_free $port
+   check_port=$?
+   printf "\n\n\n Check_port value is $check_port\n\n"
+   if [[ $check_port -eq 1 ]]
+   then
+       break
+   fi
+
+   if [[ $port -eq 7060 ]]
+   then
+       printf "Unable to find a free port in the range of 7000-7060, aborting...."
+       exit 0
+   fi
+   port=$((port+1))
+done
+
+su cisco -c  "python /home/cisco/sunstone/setup_netstack.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2 -f $port"
+#printf "python /home/cisco/sunstone/setup_netstack.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2 -f $port"
 
 host_ip=`/home/cisco/sunstone/get_host_ip.tcl ${split_host_final[0]}`
 
-echo -e "${blue}\n\n\n\n##########################################################################\n${NC}"
+echo -e "${blue}\n\n\n\n##########################################################################\n\n\n${NC}"
 
-echo -e "${red}          Done!! To ssh into the host machine, run-->\n\n\n                        \n${NC}"
+echo -e "${red}        Done!! To ssh into the host machine, run-->\n\n                        ${NC}"
 
-echo -e "${green}        ssh -l root $host_ip${NC}"
+echo -e "${green}       ssh -l root $host_ip \n\n\n${NC}"
 
-echo -e "${red}          To ssh into the XR shell, run -->\n\n                                    \n${NC}"
+echo -e "${red}        To ssh into the XR shell, run -->\n\n                                    ${NC}"
 
-echo -e "${green}        ssh -p 1234 -l root 127.0.0.1                                            \n${NC}"
-echo -e "${blue}\n\n\n\n##########################################################################\n${NC}"
+echo -e "${green}       ssh -p $port -l root 127.0.0.1                                          ${NC}"
+echo -e "${blue}\n\n\n##########################################################################\n${NC}"
 

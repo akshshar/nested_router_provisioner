@@ -1,4 +1,4 @@
-pid_list=($(ps aux | grep ssh | grep 1234 | grep 10.11.12.14 | awk '{print $2}'))
+pid_list=($(ps aux | grep ssh | grep $1 | grep 10.11.12.14 | awk '{print $2}'))
 
 for pid in ${pid_list[@]}
 do

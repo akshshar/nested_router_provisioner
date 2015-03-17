@@ -14,6 +14,19 @@ import os.path
 logging.basicConfig(level=logging.DEBUG)
 
 ABS_PATH = os.path.dirname(os.path.abspath(__file__))
+HOST_IP = ''
+
+def get_host_port(hostname):
+    cmd = ABS_PATH+"/get_host_port.sh "+ str(hostname)
+    host_port = subprocess.check_output(shlex.split(cmd))
+    return host_port
+
+
+def get_host_ip(host_port):
+    cmd = ABS_PATH+"/get_host_ip.tcl "+ str(host_port)
+    host_ip = subprocess.check_output(shlex.split(cmd))
+    return host_ip
+
 
 def disable_paging(remote_conn):
     '''Disable paging on a Cisco router'''
@@ -27,11 +40,11 @@ def disable_paging(remote_conn):
     return output
 
 
-def execute_xr_intr_shell_cmd(inv_shell_cmd_list):
+def execute_xr_intr_shell_cmd(inv_shell_cmd_list, port_ssh_fwd):
     remote_hostname = '127.0.0.1' 
     remote_username = 'root'
     remote_password = 'lab'
-    remote_port = 1234 
+    remote_port = int(port_ssh_fwd) 
 
     remote_client = paramiko.SSHClient()
     remote_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -55,10 +68,10 @@ def execute_xr_intr_shell_cmd(inv_shell_cmd_list):
 
     remote_client.close()
  
-def execute_xr_console_cmd(cmd_list):
+def execute_xr_console_cmd(cmd_list, port_ssh_fwd):
     remote_client = paramiko.SSHClient()
     remote_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    remote_client.connect('127.0.0.1', port=1234, username='root', password='lab')
+    remote_client.connect('127.0.0.1', port=int(port_ssh_fwd), username='root', password='lab')
 
     remote_console = remote_client.invoke_shell()
     print "Interactive SSH session established"
@@ -86,16 +99,52 @@ def execute_xr_console_cmd(cmd_list):
     return output
  
     
-def execute_xr_shell_cmd(cmd):
+def execute_xr_shell_cmd(cmd, port_ssh_fwd):
     print "XR command to be executed is\n\n"
-    ssh_cmd = "ssh -p 1234 root@127.0.0.1 \""+cmd+"\""
+    ssh_cmd = "ssh -p "+str(port_ssh_fwd)+" root@127.0.0.1 \""+cmd+"\""
     print str(ssh_cmd)
     output = subprocess.check_output(shlex.split(ssh_cmd))
     return output
 
     
 def main(argv):
-    output = execute_xr_console_cmd(['process shutdown flume', '\n\n' ,'process start flume', 'show proc | i flume'])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-x', '--xr_hostname', help="hostname of XR lxc", nargs='+', type=str)
+
+    args = parser.parse_args()
+
+    host_xr= args.xr_hostname[0]
+    hostname = host_xr.split('-')[2]
+    print "Hostname is "+str(hostname) 
+    #determine host_linux_port
+    HOST_PORT = get_host_port(hostname).rstrip('\n')
+    #Determine host Ip
+
+    HOST_IP = get_host_ip(HOST_PORT).rstrip('\n')
+   
+    cmd1 = "ps -ef "
+    cmd2 = "grep ssh"
+    cmd3 = "grep "+str(HOST_IP)
+    cmd4 = "awk \'{print $12}\' "
+
+    p1 = subprocess.Popen(shlex.split(cmd1), stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(shlex.split(cmd2), stdin=p1.stdout, stdout=subprocess.PIPE)
+    p1.stdout.close()
+    p3 = subprocess.Popen(shlex.split(cmd3), stdin=p2.stdout, stdout=subprocess.PIPE)
+    p2.stdout.close()
+    p4 = subprocess.Popen(shlex.split(cmd4), stdin=p3.stdout, stdout=subprocess.PIPE)
+    p3.stdout.close()
+
+    out = p4.communicate()
+
+#    proc = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE, shell=True)
+#    (out, err) = proc.communicate()
+
+    print "output is "+str(out)
+#    pdb.set_trace()
+
+    port_ssh_fwd = int(out[0].rsplit('\n')[0].split(':')[0]) 
+    output = execute_xr_console_cmd(['process shutdown flume', '\n\n' ,'process start flume', 'show proc | i flume'], port_ssh_fwd)
     print output
  
 if __name__ == "__main__":
