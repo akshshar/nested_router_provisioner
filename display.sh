@@ -60,7 +60,7 @@ do
    port=$((port+1))
 done
 
-su cisco -c  "python /home/cisco/sunstone/setup_netstack.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2 -f $port"
+su cisco -c  "python $HOME/sunstone/setup_netstack.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2 -f $port -c"
 #printf "python /home/cisco/sunstone/setup_netstack.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2 -f $port"
 
 host_ip=`/home/cisco/sunstone/get_host_ip.tcl ${split_host_final[0]}`

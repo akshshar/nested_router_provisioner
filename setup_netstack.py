@@ -14,11 +14,13 @@ import os.path
 logging.basicConfig(level=logging.DEBUG)
 
 ABS_PATH = os.path.dirname(os.path.abspath(__file__))
+home_dir = os.path.expanduser('~')
 HOST_IP = ''
 CHEF_SERVER_IP = ""
-host_prefix = "xr-lxc-"
+host_prefix = "xr-shell-"
 XR_LXC_HOST = ""
 
+print "HOME directory is "+home_dir
 def split_by_n( seq, n ):
     """A generator to divide a sequence into chunks of n units."""
     while seq:
@@ -72,7 +74,7 @@ def setup_host_auth(host_port):
 
     sftp = proxy_client.open_sftp()
     remote_file="/root/base_rsa.pub"
-    local_file="/home/cisco/.ssh/id_rsa.pub"
+    local_file=home_dir+"/.ssh/id_rsa.pub"
     sftp.put(local_file, remote_file)
     sftp.close()
     
@@ -89,7 +91,7 @@ def setup_xr_auth(port_ssh_fwd):
 
     sftp = remote_client.open_sftp()
     remote_file="/root/base_rsa.pub"
-    local_file="/home/cisco/.ssh/id_rsa.pub"
+    local_file=home_dir+"/.ssh/id_rsa.pub"
     sftp.put(local_file, remote_file)
     sftp.close()
 
@@ -241,6 +243,7 @@ def main(argv):
     parser.add_argument('-x', '--XR_telnet_port', help="telnet port to connect to XR console", nargs='+', type=str)
     parser.add_argument('-n', '--net_name', help="user defined net name", nargs='+', type=str)
     parser.add_argument('-f', '--port_ssh_fowarding', help="Port to forward the ssh connections to", nargs='+', type=str)
+    parser.add_argument('-c', '--chef_client_install', help="install chef client", action='store_true')
 
     args = parser.parse_args()
 
@@ -248,14 +251,14 @@ def main(argv):
     xr_telnet=args.XR_telnet_port[0]
     net_name=args.net_name[0]
     port_ssh_fwd= args.port_ssh_fowarding[0]
-
+    chef_install=args.chef_client_install
     print "Trying to determine the ip address of the host"
 
     HOST_IP = get_host_ip(host_telnet).rstrip('\n')
 
     #Remove known hosts
-    if os.path.exists('/home/cisco/.ssh/known_hosts'):
-        cmd = "rm /home/cisco/.ssh/known_hosts"
+    if os.path.exists(home_dir+'/.ssh/known_hosts'):
+        cmd = "rm "+home_dir+"/.ssh/known_hosts"
         print "cmd is "+str(cmd)
         output = subprocess.check_output(shlex.split(cmd))
 
@@ -361,7 +364,7 @@ def main(argv):
    #Give the XR instance some rest. Sleep for 15 seconds
     time.sleep(15)
    #Copy kimctrl to host
-    cmd = "scp /home/cisco/sunstone/kimctrl root@"+HOST_IP+":/root/kimctrl"
+    cmd = "scp "+ABS_PATH+"/kimctrl root@"+HOST_IP+":/root/kimctrl"
     print "cmd is "+str(cmd)
     output = subprocess.check_output(shlex.split(cmd))
 
@@ -386,13 +389,13 @@ def main(argv):
    #Copy XR shell public key to local authorized keys 
 
 
-    cmd = "scp -P "+str(port_ssh_fwd)+"  root@127.0.0.1:/root/.ssh/id_rsa.pub /home/cisco/sunstone/xr_shell.pub"
+    cmd = "scp -P "+str(port_ssh_fwd)+"  root@127.0.0.1:/root/.ssh/id_rsa.pub "+ABS_PATH+"/xr_shell.pub"
     output = subprocess.check_output(shlex.split(cmd))
 
 #    pdb.set_trace()
-    input_file = ['/home/cisco/sunstone/xr_shell.pub']
+    input_file = [ABS_PATH+'/xr_shell.pub']
     cmd = ['cat'] + input_file
-    with open('/home/cisco/.ssh/authorized_keys', "a") as outfile:
+    with open(home_dir+'/.ssh/authorized_keys', "a") as outfile:
         subprocess.call(cmd, stdout=outfile)
    #Set up networking and hosts in XR
     xr_int_net = '.'.join([xr_int_ip.split('.')[0], xr_int_ip.split('.')[1], xr_int_ip.split('.')[2], '0'])
@@ -418,30 +421,31 @@ def main(argv):
     for cmd in net_setup_cmd_list:
         execute_xr_shell_cmd(cmd, port_ssh_fwd)
 
-   #Copy chef rpm iand starter tar into XR shell and set up chef-client
-    cmd = " scp -P "+str(port_ssh_fwd)+"  /tftpboot/chef-12.0.3-1.x86_64.rpm root@127.0.0.1:/root/rpms/" 
-    output = subprocess.check_output(shlex.split(cmd))
+    if chef_install:
+        #Copy chef rpm iand starter tar into XR shell and set up chef-client
+        cmd = " scp -P "+str(port_ssh_fwd)+"  /tftpboot/chef-12.0.3-1.x86_64.rpm root@127.0.0.1:/root/rpms/" 
+        output = subprocess.check_output(shlex.split(cmd))
 
-    cmd = " scp -P "+str(port_ssh_fwd)+" /tftpboot/chef-starter.tar root@127.0.0.1:/root/rpms/"
-    output = subprocess.check_output(shlex.split(cmd)) 
+        cmd = " scp -P "+str(port_ssh_fwd)+" /tftpboot/chef-starter.tar root@127.0.0.1:/root/rpms/"
+        output = subprocess.check_output(shlex.split(cmd)) 
 
-    cmd = " scp -P "+str(port_ssh_fwd)+" /tftpboot/client.rb root@127.0.0.1:/root/"
-    output = subprocess.check_output(shlex.split(cmd))
+        cmd = " scp -P "+str(port_ssh_fwd)+" /tftpboot/client.rb root@127.0.0.1:/root/"
+        output = subprocess.check_output(shlex.split(cmd))
   
-   #Now set up the chef-client within XR
+       #Now set up the chef-client within XR
 
-    execute_xr_shell_cmd('rpm -ivh --nodeps /root/rpms/chef-12.0.3-1.x86_64.rpm', port_ssh_fwd)  
+        execute_xr_shell_cmd('rpm -ivh --nodeps /root/rpms/chef-12.0.3-1.x86_64.rpm', port_ssh_fwd)  
 
-    if check_remote_path('127.0.0.1', 'root', 'lab', port_ssh_fwd, "/root/chef-repo"):
-        execute_xr_shell_cmd('rm -r /root/chef-repo', port_ssh_fwd)
-        time.sleep(2)
+        if check_remote_path('127.0.0.1', 'root', 'lab', port_ssh_fwd, "/root/chef-repo"):
+            execute_xr_shell_cmd('rm -r /root/chef-repo', port_ssh_fwd)
+            time.sleep(2)
 
-    chef_client_cmd_list = ['tar -xvf /root/rpms/chef-starter.tar -C /root/', 'cd chef-repo', 'knife configure client .', 'cp /root/client.rb ./client.rb', 'knife ssl fetch', 'ps -ef | grep chef']
-    execute_xr_intr_shell_cmd(chef_client_cmd_list, port_ssh_fwd)
+        chef_client_cmd_list = ['tar -xvf /root/rpms/chef-starter.tar -C /root/', 'cd chef-repo', 'knife configure client .', 'cp /root/client.rb ./client.rb', 'knife ssl fetch', 'ps -ef | grep chef']
+        execute_xr_intr_shell_cmd(chef_client_cmd_list, port_ssh_fwd)
 
-    env_var='export SSL_CERT_FILE=/root/chef-repo/.chef/trusted_certs/sunstone.crt'
-    cmd = str(env_var)+'&& chef-client -d -c /root/chef-repo/client.rb -i 60 -s 20 -L /root/chef-repo/logs &'
-    execute_xr_shell_cmd(cmd, port_ssh_fwd)
+        env_var='export SSL_CERT_FILE=/root/chef-repo/.chef/trusted_certs/sunstone.crt'
+        cmd = str(env_var)+'&& chef-client -d -c /root/chef-repo/client.rb -i 60 -s 20 -L /root/chef-repo/logs &'
+        execute_xr_shell_cmd(cmd, port_ssh_fwd)
 
  
 if __name__ == "__main__":
