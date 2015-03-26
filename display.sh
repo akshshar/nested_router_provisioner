@@ -4,10 +4,8 @@ check=`lsof -i:$1`
 result=$?
 if [[ $result == 1 ]]
 then
-    printf "Port $1 is free...returning"
     return 1
 else
-    printf "Port $1 is not free...returning"
     return 0
 fi
 }
@@ -39,14 +37,13 @@ split_host_final=(${split_var_port//,/ })
 #printf "Now run \n\n"
 #printf "python /home/cisco/sunstone/try_nested_ssh.py -p ${split_host_final[0]} -x ${split_boot_final[0]} -n $2\n\n\n"
 
-printf "\n\n\n Starting the provisioner script....\n\nSetting up net devices on the host as XR LXC boots up. Please wait........\n\n\n"
+printf "\n\n\n Starting the provisioner script....\n\n Setting up net devices on the host as XR LXC boots up. Please wait........\n\n\n"
 
 port=7000
 while true
 do
    is_port_free $port
    check_port=$?
-   printf "\n\n\n Check_port value is $check_port\n\n"
    if [[ $check_port -eq 1 ]]
    then
        break

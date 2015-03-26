@@ -20,7 +20,6 @@ CHEF_SERVER_IP = ""
 host_prefix = "xr-shell-"
 XR_LXC_HOST = ""
 
-print "HOME directory is "+home_dir
 def split_by_n( seq, n ):
     """A generator to divide a sequence into chunks of n units."""
     while seq:
@@ -191,13 +190,15 @@ def execute_xr_console_cmd(cmd_list, port_ssh_fwd):
     remote_console.send("root\n\n\n")
     remote_console.send("\n\n\n")
 
-    time.sleep(5)
+    time.sleep(30)
+    remote_console.send("show version \r\r\r")
     for cmd in cmd_list:
         remote_console.send(str(cmd)+"\n\n")
         time.sleep(2)
 
     remote_console.send(str(cmd)+"\n\n")
     output = remote_console.recv(10000)
+    print output
     remote_client.close() 
     return output
  
@@ -242,7 +243,7 @@ def main(argv):
     parser.add_argument('-p', '--host_telnet_port', help="telnet port to connect to host linux", nargs='+', type=str)
     parser.add_argument('-x', '--XR_telnet_port', help="telnet port to connect to XR console", nargs='+', type=str)
     parser.add_argument('-n', '--net_name', help="user defined net name", nargs='+', type=str)
-    parser.add_argument('-f', '--port_ssh_fowarding', help="Port to forward the ssh connections to", nargs='+', type=str)
+    parser.add_argument('-f', '--port_ssh_fowarding', help="Port to forward the XR shell ssh connection to", nargs='+', type=str)
     parser.add_argument('-c', '--chef_client_install', help="install chef client", action='store_true')
 
     args = parser.parse_args()
@@ -433,8 +434,14 @@ def main(argv):
         output = subprocess.check_output(shlex.split(cmd))
   
        #Now set up the chef-client within XR
-
-        execute_xr_shell_cmd('rpm -ivh --nodeps /root/rpms/chef-12.0.3-1.x86_64.rpm', port_ssh_fwd)  
+        output = ""
+        try:
+            output = execute_xr_shell_cmd('rpm -q chef-12.0.3', port_ssh_fwd)
+        except Exception,e:
+            print(e)
+       
+        if output.rstrip('\n') != 'chef-12.0.3-1.x86_64':
+            execute_xr_shell_cmd('rpm -ivh --nodeps /root/rpms/chef-12.0.3-1.x86_64.rpm', port_ssh_fwd)  
 
         if check_remote_path('127.0.0.1', 'root', 'lab', port_ssh_fwd, "/root/chef-repo"):
             execute_xr_shell_cmd('rm -r /root/chef-repo', port_ssh_fwd)
